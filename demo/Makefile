@@ -6,6 +6,7 @@ TARGET		:=	egLock
 #Define OBJS for TARGET
 OBJS	:= locktest.o
 OBJS	+= interface.o
+OBJS	+= homeTcpServer.o
 
 #Define COMPILER Flags
 CFLAGS	+= -Wall -O2

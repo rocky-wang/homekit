@@ -6,7 +6,10 @@
 #include <termios.h>
 #include <errno.h>
 #include "debug.h"
+#include "lockcmd.h"
 #include "interface.h"
+
+HomeInfo_t myhome; 
 
 int initSerial()
 {
@@ -15,7 +18,7 @@ int initSerial()
     fd = open(TTYS_NAME,O_RDWR | O_NOCTTY | O_NDELAY);
     if(fd == -1){
         ERROR("open ttySAC3 error is %s\n",strerror(errno));
-        return -errno;
+        return errno;
     }
 
     fcntl(fd, F_SETFL, 0);
@@ -60,47 +63,158 @@ int setSerial(int fd)
    return 0;
 }
 
-int query_id(int fd)
+/*
+ * fill xor value to the last data
+*/
+int checkSum(unsigned char *data,int num)
 {
-    unsigned char buf[] = {0x80,0x01,0x00,0x99,0x18};
-    unsigned char tmp;
-    int i;
+	unsigned char check;
+	int i;
+	
+	if(data == NULL){
+		ERROR("input data is NULL!\n");
+		return EFAULT;
+	}
+	if(num <= 2){
+		ERROR("input data need tow space at leaste!\n");
+		return EINVAL;
+	}
 
-    for( i = 0; i < sizeof(buf)/sizeof(buf[0]); i++){
-        write(fd,buf+i,1);
-    }
+	check = data[0] ^ data[1]; 
+	for( i = 2; i < num; i++){
+		check = check ^ data[i];
+	}
 
-    sleep(1);
+	return check;
+}
 
-    for( i = 0; i < 5; i++){
-        read(fd,&tmp,1);
-        PRINT("the tmp is %x\n",tmp);
-    }
+int queryBoardId(int fd)
+{
+    unsigned char buf[5];
+    unsigned char tmp[5];
+    int len = 0;
+	int ret;
+
+	buf[0] = MLOCK_CMDHEAD;
+	buf[1] = MLCOK_CMDQBOARDID1;
+	buf[2] = 0x00;
+	buf[3] = MLOCK_CMDQBOARDID2;
+	buf[4] = checkSum(buf,4);
+
+	ret = write(fd,buf,5);
+	if(ret != 5){
+		perror("write query id data");
+		return -1;
+	}
+
+	while(len < 5){
+		ret = read(fd,tmp + len,5);
+		if(ret == -1){
+			perror("read query id data");
+			return -1;
+		}
+		PRINT("the read query id ret is %d\n",ret);
+		len += ret;
+	}
+
+	if( tmp[4] != checkSum(tmp,4) ){
+		ERROR("Query BoardId checksum error!\n");
+		return -1;
+	}
+
+	myhome.BoardId = tmp[2];
+	PRINT("Query Board Id is %x\n",myhome.BoardId);
+	
+	return 0;
+}
+
+int queryAllCabInfo(int fd)
+{
+	unsigned char buf[5];
+	unsigned char tmp[8];
+	int ret;
+	int len = 0;
+	int i;
+
+	buf[0] = MLOCK_CMDHEAD;
+	buf[1] = myhome.BoardId;
+	buf[2] = MLOCK_CMDQALLCAB;
+	buf[3] = MLOCK_CMDQCABEND;
+	buf[4] = checkSum(buf,4);
+
+	ret = write(fd,buf,5);
+	if(ret != 5){
+		perror("write query all cab data");
+		return -1;
+	}
+
+	while(len < 8){
+		ret = read(fd,tmp + len,8);
+		if(ret == -1){
+			perror("read query id data");
+			return -1;
+		}
+		PRINT("the read query all cab,ret is %d\n",ret);
+		len += ret;
+	}
+
+	if(tmp[7] != checkSum(tmp,7)){
+		ERROR("query all cab checksum failed!\n");
+		return -1;
+	}
+
+	for( i = 0; i < CABNUM; i++){
+		if( !(tmp[5] & (0x1<<i)) ){
+			myhome.cabinet[i].state = LOCKON;
+		}
+	}
+
+	return 0;
+}
+
+int unlocksys(int fd,unsigned char id)
+{
+    unsigned char buf[5];
+    int ret;
+	int i;
+
+	buf[0] = MLOCK_LOCKHEAD;
+	buf[1] = myhome.BoardId;
+	for(i = 0; i < CABNUM; i++){
+		if(id == myhome.cabinet[i].id){
+			buf[2] = myhome.cabinet[i].cmdData;
+			break;
+		}
+	}
+	if( i == CABNUM){
+		ERROR("Not Found cabinet id!\n");
+		return -1;
+	}
+	buf[3] = MLOCK_LOCKSTART;
+	buf[4] = checkSum(buf,4);
+
+    ret = write(fd,buf,5);
+	if(ret != 5){
+		perror("write unlock cab data");
+		return -1;
+	}
 
     return 0;
 }
 
-int unlocksys(int fd)
+int myhomeInit()
 {
-    unsigned char buf[] = {0x8A,0x03,0x01,0x11,0x0};
-    unsigned char check;
-    int i;
+	int i;
 
-    /* Fill up checksum */
-    check = buf[0]^ buf[1]; 
-    check = check ^ buf[2];
-    check = check ^ buf[3];
-    buf[4] = check;
+	myhome.BoardId = 0;
+	
+	for(i = 0; i < CABNUM; i++){
+		myhome.cabinet[i].id = CABIDHEAD+i;
+		myhome.cabinet[i].cmdData = i+0x1;
+		myhome.cabinet[i].state = LOCKUND;
+		snprintf(myhome.cabinet[i].name,16,"Home-%d",i+1);
+	}
 
-    PRINT("the check sum is %x\n",buf[4]);
-
-    for( i = 0; i < sizeof(buf)/sizeof(buf[0]); i++){
-           write(fd,buf+i,1);
-    }
-
-    PRINT("lock...\n");
-
-    return 0;
+	return 0;
 }
-
 

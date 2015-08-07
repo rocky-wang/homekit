@@ -1,0 +1,26 @@
+#ifndef LOCKCMD_H
+#define LOCKCMD_H
+
+#define MLOCK_CMDHEAD		0x80
+#define MLCOK_CMDQBOARDID1	0x01
+#define MLOCK_CMDQBOARDID2	0x99
+
+#define MLOCK_CMDQALLCAB	0x00
+#define MLOCK_CMDQ1_CAB		0x01
+#define MLOCK_CMDQ2_CAB		0x02
+#define MLOCK_CMDQ3_CAB		0x03
+#define MLOCK_CMDQ4_CAB		0x04
+#define MLOCK_CMDQ5_CAB		0x05
+#define MLOCK_CMDQ6_CAB		0x06
+#define MLOCK_CMDQ7_CAB		0x07
+#define MLOCK_CMDQ8_CAB		0x08
+
+#define MLOCK_CMDQCABEND	0x33
+
+#define MLOCK_LOCKHEAD		0x8A
+#define MLOCK_LOCKSTART		0x11
+
+#define CABIDHEAD			0xe0
+
+#endif
+
